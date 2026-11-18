@@ -255,8 +255,7 @@ Storing the version makes each prediction unambiguous.
 ## Database
 
 The API creates the schema automatically at startup with `CREATE TABLE IF NOT
-EXISTS`. For manual setup or inspection, `creacion_tablas.sql` contains the DDL,
-and `examples.sql` contains sample inserts.
+EXISTS`. 
 
 ```mermaid
 erDiagram
@@ -297,8 +296,6 @@ erDiagram
 `conf_minima` is the threshold applied to that prediction; the actual confidence
 of each object is stored in `detecciones[i].confidence`.
 
-> `examples.sql` uses placeholder bcrypt hashes and sample image paths. Do not
-> treat it as production data.
 
 ---
 
@@ -339,9 +336,6 @@ By default the worker uses CPU PyTorch. To use an NVIDIA GPU:
 │   └── Dockerfile
 ├── models/               # Model weights (Docker volume)
 ├── data/                 # Annotated images (shared API/worker volume)
-├── legacy/               # Previous FastAPI implementation (reference only)
-├── creacion_tablas.sql   # Manual database schema
-├── examples.sql          # Sample inserts
 ├── docker-compose.yml
 └── README.md
 ```
