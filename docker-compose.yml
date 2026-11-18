@@ -1,0 +1,75 @@
+services:
+  db:
+    image: mariadb:11
+    container_name: yolo-db
+    ports:
+      # Solo accesible desde el propio host (más seguro que 0.0.0.0).
+      # Si necesitas acceso desde la LAN, cámbialo a "3306:3306".
+      - "127.0.0.1:3306:3306"
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-yolo}
+      MARIADB_USER: ${DB_USER:-yolo}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-yolo}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./worker
+    container_name: yolo-worker
+    environment:
+      YOLO_MODEL: ${YOLO_MODEL:-best.pt}   # yolo11n.pt, yolo11s.pt o tu best.pt
+      YOLO_CONF: ${YOLO_CONF:-0.25}
+      YOLO_DEVICE: ${YOLO_DEVICE:-cpu}      # "0" para usar la primera GPU
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
+    volumes:
+      - ./models:/models       # aquí se guardan los pesos (o pon tu propio .pt)
+      - ./data:/data           # imágenes resultantes (compartido con la API)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    restart: unless-stopped
+
+
+  api:
+    build:
+      context: ./api
+    container_name: yolo-web
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-yolo}
+      DB_USER: ${DB_USER:-yolo}
+      DB_PASSWORD: ${DB_PASSWORD:-yolo}
+      SECRET_KEY: ${SECRET_KEY:-cambia-esta-clave-en-produccion}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      WORKER_URL: http://worker:9000
+      RESULTS_DIR: /data/results
+      YOLO_MODEL: ${YOLO_MODEL:-best.pt}
+      YOLO_DEVICE: ${YOLO_DEVICE:-cpu}
+      YOLO_CONF: ${YOLO_CONF:-0.25}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
+    volumes:
+      - ./data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mariadb_data:

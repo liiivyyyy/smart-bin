@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detector YOLO</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --line: #2a2f3a; --text: #e8eaf0;
+    --muted: #8b93a7; --accent: #4f8cff; --ok: #3ecf8e; --err: #ff6b6b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f6fa; --panel:#fff; --line:#dde2ec; --text:#171a21; --muted:#5d667a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  #drop { border:2px dashed var(--line); border-radius:12px; padding:36px 16px; text-align:center;
+          cursor:pointer; color:var(--muted); transition:.15s; }
+  #drop.over, #drop:hover { border-color:var(--accent); color:var(--text); }
+  #drop img { max-width:100%; max-height:260px; border-radius:8px; display:block; margin:0 auto 8px; }
+  .row { display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-top:16px; }
+  label { color:var(--muted); font-size:14px; }
+  input[type=range] { width:180px; vertical-align:middle; }
+  input[type=text], input[type=password] { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 20px;
+           font-size:15px; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #status, #authStatus, #histStatus { color:var(--muted); }
+  .err { color:var(--err) !important; }
+  #results { display:none; margin-top:24px; }
+  .grid { display:grid; grid-template-columns: 1.3fr 1fr; gap:16px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .grid img { width:100%; border-radius:8px; display:block; }
+  .stats { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .chip { background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:2px 12px; font-size:13px; color:var(--muted); }
+  .chip b { color:var(--text); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  .bar { height:6px; border-radius:3px; background:var(--line); overflow:hidden; min-width:60px; }
+  .bar > i { display:block; height:100%; background:var(--ok); }
+  details { margin-top:16px; }
+  summary { cursor:pointer; color:var(--muted); }
+  pre { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px;
+        overflow:auto; max-height:360px; font-size:13px; }
+  .toolbar { display:flex; gap:8px; margin-top:8px; }
+  .toolbar button { background:transparent; color:var(--text); border:1px solid var(--line); padding:6px 12px; font-size:13px; }
+  .auth-forms { display:flex; gap:16px; flex-wrap:wrap; }
+  .auth-box { flex:1; min-width:240px; }
+  .auth-box .row { gap:8px; margin-top:8px; }
+  .hidden { display:none !important; }
+  .history-item { display:grid; grid-template-columns: 120px 1fr; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); align-items:start; }
+  .history-item img { width:120px; border-radius:8px; cursor:pointer; }
+  .small { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Detector YOLO</h1>
+  <p class="sub">Inicia sesión para detectar objetos y guardar el historial de tus predicciones.</p>
+
+  <div id="authPanel" class="panel">
+    <div id="authForms" class="auth-forms">
+      <div class="auth-box">
+        <h2>Iniciar sesión</h2>
+        <div class="row"><input id="loginUser" type="text" placeholder="Usuario" autocomplete="username"></div>
+        <div class="row"><input id="loginPass" type="password" placeholder="Contraseña" autocomplete="current-password"></div>
+        <div class="row"><button id="loginBtn">Entrar</button></div>
+      </div>
+      <div class="auth-box">
+        <h2>Registrarse</h2>
+        <div class="row"><input id="regUser" type="text" placeholder="Usuario" autocomplete="username"></div>
+        <div class="row"><input id="regPass" type="password" placeholder="Contraseña" autocomplete="new-password"></div>
+        <div class="row"><button id="regBtn">Crear cuenta</button></div>
+      </div>
+    </div>
+    <div id="authLogged" class="hidden">
+      <div class="row" style="margin-top:0;justify-content:space-between;">
+        <div>Sesión iniciada como <b id="who"></b></div>
+        <button id="logoutBtn" class="secondary">Cerrar sesión</button>
+      </div>
+    </div>
+    <div id="authStatus" style="margin-top:8px"></div>
+  </div>
+
+  <div id="appPanel" class="hidden">
+    <div class="panel">
+      <div id="drop">
+        <div id="dropText">Arrastra una imagen aquí o haz clic para seleccionarla</div>
+      </div>
+      <input id="file" type="file" accept="image/*" hidden>
+
+      <div class="row">
+        <div>
+          <label for="conf_minima">Confianza mínima: <b id="confMinimaVal">0.25</b></label><br>
+          <input id="conf_minima" type="range" min="0.05" max="0.95" step="0.05" value="0.25">
+        </div>
+        <button id="go" disabled>Detectar</button>
+        <span id="status"></span>
+      </div>
+    </div>
+
+    <section id="results" class="panel" style="display:none">
+      <div class="stats" id="stats"></div>
+      <div class="grid">
+        <div><img id="outImg" alt="Resultado de la detección"></div>
+        <div>
+          <table>
+            <thead><tr><th>Clase</th><th>Confianza</th><th></th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <details>
+        <summary>Ver JSON de YOLO</summary>
+        <pre id="json"></pre>
+        <div class="toolbar">
+          <button id="copy">Copiar JSON</button>
+          <a id="dlImg" download="resultado.jpg"><button type="button">Descargar imagen</button></a>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel">
+      <div class="row" style="margin-top:0;justify-content:space-between;">
+        <h2 style="margin:0">Mis predicciones</h2>
+        <button id="refreshHist" class="secondary" type="button">Actualizar</button>
+      </div>
+      <div id="histStatus" style="margin:8px 0"></div>
+      <div id="history"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let current = null;
+let token = localStorage.getItem("token") || "";
+let username = localStorage.getItem("username") || "";
+
+function authHeaders() {
+  return token ? { "Authorization": "Bearer " + token } : {};
+}
+
+function setAuth(t, u) {
+  token = t || ""; username = u || "";
+  if (token) { localStorage.setItem("token", token); localStorage.setItem("username", username); }
+  else { localStorage.removeItem("token"); localStorage.removeItem("username"); }
+  renderAuth();
+}
+
+function renderAuth() {
+  const logged = !!token;
+  $("authForms").classList.toggle("hidden", logged);
+  $("authLogged").classList.toggle("hidden", !logged);
+  $("appPanel").classList.toggle("hidden", !logged);
+  $("who").textContent = username;
+  if (logged) loadHistory();
+}
+
+function say(el, msg, err=false) { el.textContent = msg || ""; el.className = err ? "err" : ""; }
+
+// Auth
+$("loginBtn").onclick = async () => {
+  say($("authStatus"), "Entrando…");
+  const body = new URLSearchParams();
+  body.set("usuario", $("loginUser").value.trim());
+  body.set("contrasena", $("loginPass").value);
+  try {
+    const res = await fetch("/auth/login", { method: "POST", body });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detalle || "Error al iniciar sesión");
+    setAuth(data.token_acceso, data.usuario);
+    say($("authStatus"), "");
+  } catch (e) { say($("authStatus"), e.message, true); }
+};
+
+$("regBtn").onclick = async () => {
+  say($("authStatus"), "Creando cuenta…");
+  try {
+    const res = await fetch("/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuario: $("regUser").value.trim(), contrasena: $("regPass").value })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detalle || "Error al registrarse");
+    setAuth(data.token_acceso, data.usuario);
+    say($("authStatus"), "");
+  } catch (e) { say($("authStatus"), e.message, true); }
+};
+
+$("logoutBtn").onclick = () => { setAuth("", ""); $("results").style.display = "none"; $("history").innerHTML = ""; };
+
+// Predict
+const drop = $("drop"), fileInput = $("file"), go = $("go"), statusEl = $("status");
+drop.onclick = () => fileInput.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); };
+fileInput.onchange = () => fileInput.files[0] && setFile(fileInput.files[0]);
+$("conf_minima").oninput = e => $("confMinimaVal").textContent = (+e.target.value).toFixed(2);
+
+function setFile(f) {
+  if (!f.type.startsWith("image/")) return say(statusEl, "El archivo no es una imagen", true);
+  current = f;
+  const url = URL.createObjectURL(f);
+  drop.innerHTML = `<img src="${url}" alt=""><div>${f.name}</div>`;
+  go.disabled = false;
+  say(statusEl, "");
+}
+
+go.onclick = async () => {
+  if (!current) return;
+  go.disabled = true; say(statusEl, "Procesando…");
+  const fd = new FormData();
+  fd.append("archivo", current);
+  fd.append("conf_minima", $("conf_minima").value);
+  try {
+    const res = await fetch("/predict", { method: "POST", headers: authHeaders(), body: fd });
+    const data = await res.json();
+    if (res.status === 401) { setAuth("", ""); throw new Error("Sesión expirada, vuelve a iniciar sesión"); }
+    if (!res.ok) throw new Error(data.detalle || "Error en el servidor");
+    render(data);
+    loadHistory();
+    say(statusEl, "");
+  } catch (e) {
+    say(statusEl, e.message, true);
+  } finally {
+    go.disabled = false;
+  }
+};
+
+function render(d) {
+  $("results").style.display = "block";
+  $("outImg").src = d.url_imagen + "?t=" + Date.now();
+  $("dlImg").href = d.url_imagen;
+  $("stats").innerHTML = [
+    ["Objetos", d.cantidad],
+    ["Tamaño", `${d.ancho}×${d.alto}`],
+  ].map(([k,v]) => `<span class="chip">${k}: <b>${v}</b></span>`).join("");
+
+  $("rows").innerHTML = d.detecciones.length
+    ? d.detecciones.map(x => `
+        <tr>
+          <td>${x.name}</td>
+          <td>${(x.confidence*100).toFixed(1)}%</td>
+          <td><div class="bar"><i style="width:${x.confidence*100}%"></i></div></td>
+        </tr>`).join("")
+    : `<tr><td colspan="3" style="color:var(--muted)">No se detectó ningún objeto.</td></tr>`;
+
+  $("json").textContent = JSON.stringify(d.detecciones, null, 2);
+  $("results").scrollIntoView({ behavior: "smooth" });
+}
+
+$("copy").onclick = () => navigator.clipboard.writeText($("json").textContent);
+
+// History
+let historyData = [];
+async function loadHistory() {
+  if (!token) return;
+  say($("histStatus"), "Cargando…");
+  try {
+    const res = await fetch("/predictions", { headers: authHeaders() });
+    const data = await res.json();
+    if (res.status === 401) { setAuth("", ""); return; }
+    if (!res.ok) throw new Error(data.detalle || "Error al cargar historial");
+    historyData = data;
+    if (!data.length) { $("history").innerHTML = `<div class="small">Aún no hay predicciones.</div>`; say($("histStatus"), ""); return; }
+    $("history").innerHTML = data.map((p, i) => {
+      const when = p.fecha_creacion ? new Date(p.fecha_creacion).toLocaleString() : "";
+      const dets = (p.detecciones||[]).map(d=>`${d.name} ${(d.confidence*100).toFixed(0)}%`).join(", ") || "Sin detecciones";
+      return `<div class="history-item">
+        <img src="${p.url_imagen}" alt="Predicción" style="cursor:pointer" onclick="render(historyData[${i}])">
+        <div>
+          <div><b>${p.cantidad}</b> objeto(s) · conf. mín. ${p.conf_minima} · ${when}</div>
+          <div class="small">${p.ancho}×${p.alto} · modelo ${p.nombre_modelo ?? "-"}</div>
+          <div class="small">${dets}</div>
+        </div>
+      </div>`;
+    }).join("");
+    say($("histStatus"), "");
+  } catch (e) { say($("histStatus"), e.message, true); }
+}
+
+$("refreshHist").onclick = loadHistory;
+
+// Init
+(async () => {
+  if (token) {
+    try {
+      const res = await fetch("/auth/me", { headers: authHeaders() });
+      if (!res.ok) throw 0;
+      const data = await res.json();
+      username = data.usuario; localStorage.setItem("username", username);
+    } catch { token = ""; username = ""; localStorage.removeItem("token"); localStorage.removeItem("username"); }
+  }
+  renderAuth();
+})();
+</script>
+</body>
+</html>
